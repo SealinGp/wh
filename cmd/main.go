@@ -1,72 +1,49 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"io"
+	"flag"
+	http_proxy "github.com/SealinGp/wh/http-proxy"
+	"github.com/SealinGp/wh/pkg/proxy"
 	"log"
-	"net"
-	"net/url"
-	"strings"
+)
+
+/**
+https:
+CONNECT www.google.com:443 HTTP/1.1
+Host: www.google.com:443
+Proxy-Connection: keep-alive
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.95 Safari/537.36
+
+http:
+GET http://www.flysnow.org/ HTTP/1.1
+Host: www.flysnow.org
+Proxy-Connection: keep-alive
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.95 Safari/537.36
+
+
+
+server
+1.接受连接
+2.转发连接给Host
+*/
+var (
+	address = flag.String("addr", "", "listen address")
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags|log.Lshortfile)
-	l, err := net.Listen("tcp", ":8081")
-	if err != nil {
-		log.Panic(err)
-	}
-
-	for {
-		client, err := l.Accept()
-		if err != nil {
-			log.Printf("[E] accept failed.err:%s",err)
-			return
-		}
-
-		go handleClientRequest(client)
-	}
-}
-
-func handleClientRequest(client net.Conn) {
-	defer client.Close()
-
-	var b [1024]byte
-	n, err := client.Read(b[:])
-	if err != nil {
-		log.Println(err)
+	flag.Parse()
+	if *address == "" {
+		log.Println("-address required")
 		return
 	}
-	var method, host, address string
-	fmt.Sscanf(string(b[:bytes.IndexByte(b[:], '\n')]), "%s%s", &method, &host)
-	hostPortURL, err := url.Parse(host)
+	httpProxy := proxy.NewHttpProxy(&proxy.HttpProxyOpt{
+		Address: *address,
+	})
+	err := httpProxy.Start()
+	defer httpProxy.Close()
 	if err != nil {
-		log.Println(err)
+		log.Printf("[E] start failed. err:%s", err)
 		return
 	}
-
-	if hostPortURL.Opaque == "443" { //https访问
-		address = hostPortURL.Scheme + ":443"
-	} else { //http访问
-		if strings.Index(hostPortURL.Host, ":") == -1 { //host不带端口， 默认80
-			address = hostPortURL.Host + ":80"
-		} else {
-			address = hostPortURL.Host
-		}
-	}
-
-	//获得了请求的host和port，就开始拨号吧
-	server, err := net.Dial("tcp", address)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if method == "CONNECT" {
-		fmt.Fprint(client, "HTTP/1.1 200 Connection established\r\n\r\n")
-	} else {
-		server.Write(b[:n])
-	}
-	//进行转发
-	go io.Copy(server, client)
-	io.Copy(client, server)
 }
