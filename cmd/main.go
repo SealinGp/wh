@@ -41,6 +41,7 @@ func main() {
 	}
 
 	httpProxy := proxy.NewHttpPxy(&proxy.HttpPxyOpt{
+		Addr:  *address,
 		Debug: true,
 	})
 	_ = httpProxy.Start()
