@@ -23,7 +23,7 @@ type HttpProxyOpt struct {
 	Address string
 }
 
-func NewHttpProxy(opt *HttpProxyOpt) *HttpProxy {
+func NewHTTP(opt *HttpProxyOpt) *HttpProxy {
 	httpProxy := &HttpProxy{
 		address:  opt.Address,
 		listener: nil,

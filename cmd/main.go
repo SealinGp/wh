@@ -4,6 +4,9 @@ import (
 	"flag"
 	"github.com/SealinGp/wh/pkg/proxy"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 /**
@@ -36,13 +39,27 @@ func main() {
 		log.Println("-address required")
 		return
 	}
-	httpProxy := proxy.NewHttpProxy(&proxy.HttpProxyOpt{
-		Address: *address,
+
+	httpProxy := proxy.NewHttpPxy(&proxy.HttpPxyOpt{
+		Debug: true,
 	})
-	err := httpProxy.Start()
-	defer httpProxy.Close()
-	if err != nil {
-		log.Printf("[E] start failed. err:%s", err)
+	_ = httpProxy.Start()
+
+	sigCh := make(chan os.Signal)
+	closeDoneCh := make(chan bool)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGHUP)
+	go func() {
+		sig := <-sigCh
+		log.Printf("[I] received sig closing...sig:%s \n", sig)
+
+		//todo closing ...
+		err := httpProxy.Close()
+		if err != nil {
+			log.Printf("[E] close failed. err:%s", err)
+		}
+
+		close(closeDoneCh)
 		return
-	}
+	}()
+	<-closeDoneCh
 }
