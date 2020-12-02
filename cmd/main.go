@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"github.com/SealinGp/wh/pkg/proxy"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 /**
@@ -48,10 +50,9 @@ func main() {
 
 	sigCh := make(chan os.Signal)
 	closeDoneCh := make(chan bool)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGHUP)
+
 	go func() {
-		sig := <-sigCh
-		log.Printf("[I] received sig closing...sig:%s \n", sig)
+		log.Printf("[I] received sig closing...sig:%s \n", <-sigCh)
 
 		//todo closing ...
 		err := httpProxy.Close()
@@ -62,5 +63,11 @@ func main() {
 		close(closeDoneCh)
 		return
 	}()
+
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGHUP)
 	<-closeDoneCh
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+	<-ctx.Done()
 }

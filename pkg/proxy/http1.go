@@ -33,7 +33,7 @@ func NewHttpPxy(opt *HttpPxyOpt) *HttpPxy {
 func (httpPxy *HttpPxy) Start() error {
 	mux := http.NewServeMux()
 	mux.Handle("/", httpPxy)
-	httpPxy.server.Handler = http.NewServeMux()
+	httpPxy.server.Handler = mux
 
 	go func() {
 		log.Printf("[I] listening in %s ...", httpPxy.server.Addr)
