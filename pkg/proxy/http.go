@@ -3,144 +3,149 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
-	"net/url"
+	"net/http"
 	"strings"
 	"time"
 )
 
-type HttpProxy struct {
-	address  string
-	listener net.Listener
-	stopCh   chan struct{}
-	closed   bool
+type HttpPxy struct {
+	server *http.Server
+	client *http.Client
+	debug  bool
 }
 
-type HttpProxyOpt struct {
-	Address string
+type HttpPxyOpt struct {
+	Debug bool
+	Addr  string
 }
 
-func NewHTTP(opt *HttpProxyOpt) *HttpProxy {
-	httpProxy := &HttpProxy{
-		address:  opt.Address,
-		listener: nil,
-		stopCh:   make(chan struct{}),
-		closed:   false,
+func NewHttpPxy(opt *HttpPxyOpt) *HttpPxy {
+	httpProxy := &HttpPxy{
+		debug: opt.Debug,
+		server: &http.Server{
+			Addr: opt.Addr,
+		},
+		client: &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		},
 	}
+	httpProxy.server.Handler = httpProxy
 	return httpProxy
 }
 
-func (httpProxy *HttpProxy) Start() error {
-	var err error
-	httpProxy.listener, err = net.Listen("tcp", httpProxy.address)
-	if err != nil {
-		return err
-	}
-	for {
-		select {
-		case <-httpProxy.stopCh:
-			return nil
-		default:
+func (httpPxy *HttpPxy) Start() error {
+	httpPxy.server.Handler = httpPxy
+	go func() {
+		log.Printf("[I] listening in %s ...", httpPxy.server.Addr)
+		if err := httpPxy.server.ListenAndServe(); err != nil {
+			log.Printf("[E] listenAndServe failed. err:%s", err)
 		}
-		conn, err := httpProxy.listener.Accept()
-		if err != nil {
-			log.Printf("[E] accept failed")
-		}
-
-		go httpProxy.HandleConn(conn)
-	}
-}
-
-func (httpProxy *HttpProxy) Close() error {
-	if httpProxy.closed {
-		return nil
-	}
-
-	close(httpProxy.stopCh)
-	httpProxy.closed = true
-	err := httpProxy.listener.Close()
-	if err != nil {
-		log.Printf("[E] close failed. addr:%s, err:%s", httpProxy.address, err)
-	}
+	}()
 	return nil
 }
 
-func (httpProxy *HttpProxy) HandleConn(conn net.Conn) {
-	defer conn.Close()
-	addr, err := httpProxy.GetDstAddr(conn)
-	if err != nil {
-		log.Printf("[E] GetDstAddr failed. err:%s", err)
-		return
+func (httpPxy *HttpPxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if httpPxy.debug {
+		log.Printf("received req. url:%s headers:%v, method:%s,clientAddr:%s", req.URL, req.Header, req.Method, req.RemoteAddr)
 	}
+	defer req.Body.Close()
 
-	dstConn, err := net.Dial("tcp", addr)
-	if err != nil {
-		log.Printf("[E] dial dst failed. err:%s, addr:%s", err, addr)
-		return
-	}
-	defer dstConn.Close()
-
-	//dst server -> proxy server
-	go func() {
-		_, err = io.Copy(conn, dstConn)
-		if err != nil {
-			log.Printf("[E] dial dst failed. err:%s, addr:%s", err, addr)
-			return
-		}
-	}()
-
-	//proxy server -> dst server
-	_, err = io.Copy(dstConn, conn)
-	if err != nil {
-		log.Printf("[E] dial dst failed. err:%s, addr:%s", err, addr)
-		return
-	}
-}
-
-func (httpProxy *HttpProxy) GetDstAddr(conn net.Conn) (string, error) {
-	var method, host, addr string
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
-	errCh := make(chan error, 1)
-	input := make([]byte, 1024)
-	var n int
-	var err error
-	go func() {
-		defer close(errCh)
-		n, err = conn.Read(input)
-		select {
-		case errCh <- err:
-		case <-ctx.Done():
-		}
-	}()
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case err := <-errCh:
-		if err != nil {
-			return "", err
-		}
+
+	url, err := httpPxy.GetUrl(req)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		log.Printf("[E] get url failed. err:%s\n", err)
+		return
 	}
 
-	//header
-	sepIndex := bytes.IndexByte(input[:n], '\n')
-	_, _ = fmt.Sscanf(string(input[:sepIndex]), "%s%s", &method, &host)
-	httpUrl, err := url.Parse(host)
+	body, err := httpPxy.GetBody(req)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		log.Printf("[E] get url failed. err:%s\n", err)
+		return
+	}
+
+	request, err := http.NewRequestWithContext(ctx, req.Method, url, body)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		log.Printf("[E] new request failed. err:%s\n", err)
+		return
+	}
+	request.Header = req.Header.Clone()
+
+	resp, err := httpPxy.client.Do(request)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		log.Printf("[E] client do failed. err:%s\n", err)
+		return
+	}
+
+	_, _ = io.Copy(rw, resp.Body)
+
+}
+func (httpPxy *HttpPxy) GetUrl(req *http.Request) (string, error) {
+	var url, httpVer string
+
+	//get dst url
+	connect := req.Header.Get("CONNECT")
+	_, err := fmt.Sscanf(connect, "%s%s", &url, &httpVer)
 	if err != nil {
 		return "", err
 	}
-	if httpUrl.Opaque == "443" {
-		addr = httpUrl.Scheme + ":443"
-	} else {
-		addr = httpUrl.Host
-		if strings.Index(httpUrl.Host, ":") == -1 {
-			addr += ":80"
-		}
+
+	//check http version
+	_, _, ok := http.ParseHTTPVersion(httpVer)
+	if !ok {
+		return "", errors.New("unknown http version")
 	}
 
-	return addr, nil
+	//scheme
+	scheme := "http://"
+	if strings.Contains(url, "443") {
+		url = strings.ReplaceAll(url, ":443", "")
+		scheme = "https://"
+	}
+	url = fmt.Sprintf("%s%s", scheme, url)
+
+	return url, nil
+}
+
+func (httpPxy *HttpPxy) GetBody(req *http.Request) (io.Reader, error) {
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	by := make([]byte, 1500)
+	buf := bytes.NewBuffer(by)
+	_, err = buf.Write(body)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func (httpPxy *HttpPxy) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	return httpPxy.server.Shutdown(ctx)
 }
