@@ -10,15 +10,38 @@ import (
 type Server struct {
 	addr     string
 	listener *net.TCPListener
-	connID   uint64
-	conns    map[uint64]*net.TCPConn
-	rwmutex  sync.RWMutex
-	closeCh  chan struct{}
-	closed   bool
+
+	connID  uint64
+	conns   map[uint64]*net.TCPConn
+	rwmutex sync.RWMutex
+
+	proxyType int
+	closeCh   chan struct{}
+	closed    bool
 }
 
 type ServerOpt struct {
-	Addr string
+	Addr      string
+	ProxyType int
+}
+
+func NewServer(opt *ServerOpt) *Server {
+	if opt.ProxyType == UNKOWN_PROXY {
+		opt.ProxyType = HTTP_PROXY
+	}
+
+	s := &Server{
+		addr:     opt.Addr,
+		listener: nil,
+
+		connID: 0,
+		conns:  make(map[uint64]*net.TCPConn),
+
+		closeCh:   make(chan struct{}),
+		closed:    false,
+		proxyType: opt.ProxyType,
+	}
+	return s
 }
 
 func (server *Server) Start() error {
@@ -84,7 +107,7 @@ func (server *Server) Close() error {
 	return server.listener.Close()
 }
 
-func (server *Server) DelConn(connID uint64) {
+func (server *Server) delConn(connID uint64) {
 	server.rwmutex.Lock()
 	defer server.rwmutex.Unlock()
 	delete(server.conns, connID)

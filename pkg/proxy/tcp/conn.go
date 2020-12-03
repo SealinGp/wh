@@ -2,10 +2,16 @@ package tcp
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"log"
 	"net"
-	"sync"
+	"net/http"
+)
+
+const (
+	UNKOWN_PROXY = iota
+	HTTP_PROXY
 )
 
 type Conn struct {
@@ -14,7 +20,6 @@ type Conn struct {
 	writer       *bufio.Writer
 	reader       *bufio.Reader
 	conn         *net.TCPConn
-	dataPool     *sync.Pool
 	dstServer    map[string]*Server
 	closed       bool
 	closeCh      chan struct{}
@@ -35,11 +40,6 @@ func newConn(opt *ConnOpt) *Conn {
 		conn:         opt.conn,
 		closed:       false,
 		closeCh:      make(chan struct{}),
-		dataPool: &sync.Pool{
-			New: func() interface{} {
-				return make([]byte, 1500)
-			},
-		},
 	}
 	return conn
 }
@@ -50,11 +50,23 @@ func (tcpConn *Conn) serveRead() {
 		if err != nil {
 			log.Printf("[E] close conn failed. connID:%d, err:%s", tcpConn.ID, err)
 		}
-		tcpConn.parentServer.DelConn(tcpConn.ID)
+		tcpConn.parentServer.delConn(tcpConn.ID)
 	}()
 
 	for {
-		data := tcpConn.dataPool.Get().([]byte)
+		if tcpConn.parentServer.proxyType == HTTP_PROXY {
+			err := tcpConn.httpRead()
+			if err != nil {
+				if err == io.EOF {
+					log.Printf("[I] received io.EOF. err:%s", err)
+					return
+				}
+				log.Printf("[E] http req failed. err:%s", err)
+			}
+			continue
+		}
+
+		data := make([]byte, 1500)
 		n, err := tcpConn.reader.Read(data)
 		if err != nil {
 			if err == io.EOF {
@@ -63,17 +75,20 @@ func (tcpConn *Conn) serveRead() {
 			log.Printf("[E] read from tcpConn failed. err:%s", err)
 			continue
 		}
-
-		//CONNECT
-		//get dst addr
-		dstAddr := string(data[:n])
-		dstaddr, err := net.ResolveTCPAddr("tcp", dstAddr)
-		if err != nil {
-			log.Printf("[E] resolve dst addr failed. err:%s", err)
-			return
-		}
-		dstLis, err := net.DialTCP("tcp", nil, dstaddr)
-
-		tcpConn.dataPool.Put(data[:0])
+		log.Printf("[I] tcp conn recevied. connID:%d data:%s", tcpConn.ID, string(data[:n]))
 	}
+}
+
+func (tcpConn *Conn) httpRead() error {
+	req, err := http.ReadRequest(tcpConn.reader)
+	if err != nil {
+		return err
+	}
+
+	if req.Method != http.MethodConnect {
+		return errors.New("wrong proxy method")
+	}
+
+	log.Printf("[I] http req received. host:%s", req.Host)
+	return nil
 }

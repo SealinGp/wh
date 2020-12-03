@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/SealinGp/wh/pkg/proxy"
+	tcp "github.com/SealinGp/wh/pkg/proxy/tcp"
 	"log"
 	"os"
 	"os/signal"
@@ -42,11 +42,14 @@ func main() {
 		return
 	}
 
-	httpProxy := proxy.NewHttpPxy(&proxy.HttpPxyOpt{
-		Addr:  *address,
-		Debug: true,
+	httpProxy := tcp.NewServer(&tcp.ServerOpt{
+		Addr:      *address,
+		ProxyType: tcp.HTTP_PROXY,
 	})
-	_ = httpProxy.Start()
+	if err := httpProxy.Start(); err != nil {
+		log.Printf("[E] http start failed. err:%s\n", err)
+		return
+	}
 
 	sigCh := make(chan os.Signal)
 	closeDoneCh := make(chan bool)
