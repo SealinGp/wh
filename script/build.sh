@@ -1,9 +1,18 @@
 #!/bin/bash
 #1.todo xargs
-#2.
-#2020/12/02 22:06:39 [I] listening in :1234 ...
-#2020/12/02 22:07:46 received req. url://www.google.com:443 headers:map[Proxy-Connection:[keep-alive] User-Agent:[Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36]], method:CONNECT,clientAddr:218.18.239.38:54073
-#2020/12/02 22:07:46 [E] get url failed. err:EOF
+#2.todo read from closed network connection
+#2020/12/07 21:56:57 [D] tcp listening in :1234...
+#2020/12/07 21:57:04 [I] dst conn established. src:127.0.0.1:50771, dst:113.105.155.219:443
+#2020/12/07 21:57:04 [I] dst conn established. src:127.0.0.1:50769, dst:101.37.113.127:443
+#2020/12/07 21:57:04 [I] dst conn established. src:127.0.0.1:50770, dst:180.163.150.38:443
+#2020/12/07 21:57:07 [E] read from tcpConn failed. err:read tcp 127.0.0.1:1234->127.0.0.1:50770: use of closed network connection
+#2020/12/07 21:57:09 [I] dst conn established. src:127.0.0.1:50775, dst:104.16.126.175:443
+#2020/12/07 21:57:24 [E] read from tcpConn failed. err:read tcp 127.0.0.1:1234->127.0.0.1:50775: use of closed network connection
+#2020/12/07 21:57:34 [E] read from tcpConn failed. err:read tcp 192.168.1.21:50772->101.37.113.127:443: use of closed network connection
+#2020/12/07 21:57:34 [E] read from tcpConn failed. err:read tcp 192.168.1.21:50773->113.105.155.219:443: use of closed network connection
 
-find $PWD -type f -name main.go
+#find $PWD -type f -name main.go
+addr=":1234"
+
 go build -o $PWD/wh main.go
+./wh -addr "${addr}"

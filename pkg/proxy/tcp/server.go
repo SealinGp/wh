@@ -12,7 +12,7 @@ type Server struct {
 	listener *net.TCPListener
 
 	connID  uint64
-	conns   map[uint64]*net.TCPConn
+	conns   map[uint64]*Conn
 	rwmutex sync.RWMutex
 
 	proxyType int
@@ -35,7 +35,7 @@ func NewServer(opt *ServerOpt) *Server {
 		listener: nil,
 
 		connID: 0,
-		conns:  make(map[uint64]*net.TCPConn),
+		conns:  make(map[uint64]*Conn),
 
 		closeCh:   make(chan struct{}),
 		closed:    false,
@@ -91,24 +91,37 @@ func (server *Server) serveAccept() {
 		go tcpConn.serveRead()
 
 		server.rwmutex.Lock()
-		server.conns[curConnId] = conn
+		server.conns[curConnId] = tcpConn
 		server.connID++
 		server.rwmutex.Unlock()
 	}
 }
 
 func (server *Server) Close() error {
+	server.rwmutex.Lock()
+	defer server.rwmutex.Unlock()
+
 	if server.closed {
 		return nil
 	}
 
 	server.closed = true
 	close(server.closeCh)
+	for cID, c := range server.conns {
+		err := c.Close()
+		if err != nil {
+			log.Printf("[E] conns close failed")
+		}
+		delete(server.conns, cID)
+	}
 	return server.listener.Close()
 }
 
 func (server *Server) delConn(connID uint64) {
 	server.rwmutex.Lock()
 	defer server.rwmutex.Unlock()
+	if _, ok := server.conns[connID]; !ok {
+		return
+	}
 	delete(server.conns, connID)
 }
