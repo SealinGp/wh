@@ -57,16 +57,17 @@ func newConn(opt *ConnOpt) *Conn {
 	return conn
 }
 
-func (tcpConn *Conn) serveRead() {
+func (tcpConn *Conn) start() error {
 	err := tcpConn.dstConnInit()
 	if err != nil {
 		log.Printf("[E] http req failed. err:%s", err)
-		return
+		return err
 	}
 	log.Printf("[I] dst conn established. src:%s, dst:%s", tcpConn.conn.RemoteAddr(), tcpConn.dst.conn.RemoteAddr())
 
 	go tcpConn.dstToSrc()
 	go tcpConn.srcToDst()
+	return nil
 }
 
 func (tcpConn *Conn) dstConnInit() error {
@@ -137,7 +138,7 @@ func (tcpConn *Conn) srcToDst() {
 			if err == io.EOF {
 				return
 			}
-			log.Printf("[E] read from tcpConn failed. err:%s", err)
+			log.Printf("[E] src->dst read from tcpConn failed. err:%s", err)
 			continue
 		}
 
@@ -150,7 +151,7 @@ func (tcpConn *Conn) srcToDst() {
 			if err == io.EOF {
 				return
 			}
-			log.Printf("[E] write to dst tcpConn failed. err:%s", err)
+			log.Printf("[E] src->dst write to dst tcpConn failed. err:%s", err)
 			continue
 		}
 	}
@@ -183,7 +184,7 @@ func (tcpConn *Conn) dstToSrc() {
 			if err == io.EOF {
 				return
 			}
-			log.Printf("[E] read from tcpConn failed. err:%s", err)
+			log.Printf("[E] dst->src read from tcpConn failed. err:%s", err)
 			continue
 		}
 
@@ -196,7 +197,7 @@ func (tcpConn *Conn) dstToSrc() {
 			if err == io.EOF {
 				return
 			}
-			log.Printf("[E] write to dst tcpConn failed. err:%s", err)
+			log.Printf("[E] dst->src write to dst tcpConn failed. err:%s", err)
 			continue
 		}
 	}

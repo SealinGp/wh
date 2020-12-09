@@ -88,7 +88,11 @@ func (server *Server) serveAccept() {
 			ID:     curConnId,
 			conn:   conn,
 		})
-		go tcpConn.serveRead()
+		err = tcpConn.start()
+		if err != nil {
+			log.Printf("[E] tcp conn start faild. err:%s", err)
+			continue
+		}
 
 		server.rwmutex.Lock()
 		server.conns[curConnId] = tcpConn
@@ -107,11 +111,7 @@ func (server *Server) Close() error {
 
 	server.closed = true
 	close(server.closeCh)
-	for cID, c := range server.conns {
-		err := c.Close()
-		if err != nil {
-			log.Printf("[E] conns close failed")
-		}
+	for cID := range server.conns {
 		delete(server.conns, cID)
 	}
 	return server.listener.Close()
