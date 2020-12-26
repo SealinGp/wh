@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	tcp "github.com/SealinGp/wh/pkg/proxy/tcp"
+	"github.com/SealinGp/wh/pkg/transport/tcp"
 	"log"
 	"os"
 	"os/signal"
@@ -13,13 +13,13 @@ import (
 
 var (
 	addr = flag.String("addr", "", "listen address")
+	help = flag.Bool("help", false, "print help")
 )
 
 func main() {
 	flag.Parse()
-	if *addr == "" {
+	if *addr == "" || *help {
 		flag.PrintDefaults()
-		log.Println("-addr required")
 		return
 	}
 

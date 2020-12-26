@@ -4,7 +4,6 @@ import (
 	"log"
 	"net"
 	"sync"
-	"time"
 )
 
 type Server struct {
@@ -71,17 +70,6 @@ func (server *Server) serveAccept() {
 			continue
 		}
 
-		err = conn.SetKeepAlive(true)
-		if err != nil {
-			log.Printf("[E] conn set keep alive failed. err:%s", err)
-			continue
-		}
-		err = conn.SetKeepAlivePeriod(30 * time.Minute)
-		if err != nil {
-			log.Printf("[E] conn set keep alive period failed. err:%s", err)
-			continue
-		}
-
 		curConnId := server.connID
 		tcpConn := newConn(&ConnOpt{
 			Server: server,
@@ -93,6 +81,8 @@ func (server *Server) serveAccept() {
 			log.Printf("[E] tcp conn start faild. err:%s", err)
 			continue
 		}
+
+		log.Printf("[I] serveAccept local:%s, remote:%s", conn.LocalAddr(), conn.RemoteAddr())
 
 		server.rwmutex.Lock()
 		server.conns[curConnId] = tcpConn
