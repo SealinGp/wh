@@ -22,13 +22,13 @@ type SockServer struct {
 
 type SockServerOpt struct {
 	Addr string
-	auth SockAuthImpl
+	Auth SockAuthImpl
 }
 
 func NewSockServer(opt *SockServerOpt) *SockServer {
 	sockServer := &SockServer{
 		addr: opt.Addr,
-		auth: opt.auth,
+		auth: opt.Auth,
 
 		listener: nil,
 		conns:    make(map[uint64]*sockConn),

@@ -1,5 +1,5 @@
 #!/bin/bash
 
+export addr=":1234"
 
-addr=":1234"
-./wh -addr "${addr}"
+./wh -c "config/config.yml" -s "$addr"

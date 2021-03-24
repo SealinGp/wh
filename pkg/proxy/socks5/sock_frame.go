@@ -1,7 +1,5 @@
 package socks5
 
-//https://www.ietf.org/rfc/rfc1928.txt
-
 import (
 	"context"
 	"encoding/binary"
@@ -11,6 +9,8 @@ import (
 	"log"
 	"net"
 )
+
+//https://www.ietf.org/rfc/rfc1928.txt
 
 const (
 	DEFAULT_VERSION = 0x05
@@ -57,6 +57,7 @@ var (
 		NMETHODS_IANA:       "IANA",
 		NMETHODS_NOTSUPPORT: "NOTSUPPORT",
 	}
+
 	CMD_MAP = map[byte]string{
 		CMD_TCP:  "tcp",
 		CMD_BIND: "ftp",
@@ -263,6 +264,8 @@ func (sockFrame *SockFrame) WriteAuthResp(writer io.Writer, isSuccess bool) (int
 client -> server
 3.客户端指定目标传输协议(tcp|udp),地址,端口
 [5 1 0 1 127 0 0 1 4 211]
+
+[5 1 0 3 14 119 119 119 46 103 111 111 103 108 101 46 99 111 109 1 187]
 +----+-----+-------+------+----------+----------+
 |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
 +----+-----+-------+------+----------+----------+
@@ -354,8 +357,8 @@ func (sockFrame *SockFrame) ReadInstruction(ctx context.Context, reader io.Reade
 		}
 
 		sockFrame.Aytp = AYTP_DOMAIN
-		sockFrame.Dst.ADDR = string(frameData[4 : 4+dstAddrLen])
-		sockFrame.Dst.PORT = binary.BigEndian.Uint16(frameData[4+dstAddrLen:])
+		sockFrame.Dst.ADDR = string(frameData[5 : 5+dstAddrLen])
+		sockFrame.Dst.PORT = binary.BigEndian.Uint16(frameData[5+dstAddrLen:])
 	default:
 		return errors.New("unsupported AYTP type")
 	}
@@ -389,7 +392,12 @@ func (sockFrame *SockFrame) WriteInstruction(writer io.Writer, connFunc func() (
 	data = append(data, ipv4...)
 	data = append(data, port...)
 
-	return writer.Write(data)
+	_, err := writer.Write(data)
+	if connErr != nil {
+		return 0, connErr
+	}
+
+	return 0, err
 }
 
 /**

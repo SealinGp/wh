@@ -14,10 +14,6 @@ import (
 	"time"
 )
 
-type SockAuthImpl interface {
-	Auth(user, pass string) bool
-}
-
 type sockConn struct {
 	parentServer *SockServer
 	connID       uint64
@@ -61,24 +57,27 @@ func (sockConn *sockConn) Start() error {
 	err := sockConn.handShake()
 	if err != nil {
 		sockConn.Close()
-		log.Printf("[E] hand shake failed. err:%v", err)
+		log.Printf("[E] handShake failed. connID:%v, err:%v", sockConn.connID, err)
 		return err
 	}
-	log.Printf("[I] hand shake success. authType:%v", sockConn.authType)
 
-	//服务端如需认证,则走认证流程
+	log.Printf("[I] handShake success. connID:%v, authType:%v", sockConn.connID, sockConn.authType)
+
+	//服务端如需user_pass认证,则走认证流程
 	if sockConn.authType == NMETHODS_USERPASS && sockConn.auth != nil {
 		if err = sockConn.handleAuth(); err != nil {
 			sockConn.Close()
 			return err
 		}
+
+		log.Printf("[I] handleAuth success. connID:%v", sockConn.connID)
 	}
 
 	//开始处理客户端代理请求
 	err = sockConn.handleProxyInstruction()
 	if err != nil {
 		sockConn.Close()
-		log.Printf("[E] handleProxyInstruction failed. err:%v", err)
+		log.Printf("[E] handleProxyInstruction failed. connID:%v, err:%v", sockConn.connID, err)
 		return err
 	}
 
@@ -112,11 +111,14 @@ func (sockConn *sockConn) handShake() error {
 			resp.Method = NMETHODS_USERPASS
 			break
 		}
+		if method == NMETHODS_GSSAPI {
+			//todo
+		}
 	}
 
 	_, err = resp.WriteHandShake(sockConn.srcConn)
 	if err != nil {
-		log.Printf("[E] write failed. addr:%v, connID:%v, err:%v", sockConn.srcConn.RemoteAddr(), sockConn.connID, err)
+		log.Printf("[E] write failed. connID:%v, addr:%v, err:%v", sockConn.connID, sockConn.srcConn.RemoteAddr(), err)
 		return err
 	}
 
@@ -132,7 +134,7 @@ func (sockConn *sockConn) handleAuth() error {
 
 	sockAuthRequest, err := sockFrame.ReadAuthReq(ctx, sockConn.srcConn)
 	if err != nil {
-		log.Printf("[E] read auth req failed. err:%v", err)
+		log.Printf("[E] read auth req failed. connID:%v, err:%v", sockConn.connID, err)
 		return err
 	}
 
@@ -148,7 +150,7 @@ func (sockConn *sockConn) handleAuth() error {
 func (sockConn *sockConn) handleProxyInstruction() error {
 	err := sockConn.parseProxyInstruction()
 	if err != nil {
-		log.Printf("[E] createDstAddrConn failed. err:%v", err)
+		log.Printf("[E] createDstAddrConn failed. connID:%v, err:%v", sockConn.connID, err)
 		return err
 	}
 
@@ -156,22 +158,24 @@ func (sockConn *sockConn) handleProxyInstruction() error {
 		var localAddr string
 
 		if strings.Contains(sockConn.dstNetwork, "tcp") {
-			sockConn.dstConn, err = net.DialTCP(sockConn.dstNetwork, nil, sockConn.dstAddr.(*net.TCPAddr))
+			dscConn, err := net.DialTCP(sockConn.dstNetwork, nil, sockConn.dstAddr.(*net.TCPAddr))
 			if err != nil {
-				log.Printf("[E] dial dst conn failed. dstNetwork:%v, dstAddr:%v, err:%v", sockConn.dstNetwork, sockConn.dstAddr.String(), err)
+				log.Printf("[E] dial dst conn failed. connID:%v, dstNetwork:%v, dstAddr:%v, err:%v", sockConn.connID, sockConn.dstNetwork, sockConn.dstAddr.String(), err)
 				return nil, nil, err
 			}
 
+			sockConn.dstConn = dscConn
 			localAddr = sockConn.dstConn.LocalAddr().String()
 		}
 
 		if strings.Contains(sockConn.dstNetwork, "udp") {
-			sockConn.dstConn, err = net.ListenUDP(sockConn.dstNetwork, nil)
+			dstConn, err := net.ListenUDP(sockConn.dstNetwork, nil)
 			if err != nil {
-				log.Printf("[E] listen udp failed. err:%v", err)
+				log.Printf("[E] listen udp failed. connID:%v, err:%v", sockConn.connID, err)
 				return nil, nil, err
 			}
 
+			sockConn.dstConn = dstConn
 			localAddr = sockConn.dstConn.LocalAddr().String()
 		}
 
@@ -221,11 +225,11 @@ func (sockConn *sockConn) parseProxyInstruction() error {
 	}
 
 	if err != nil {
-		log.Printf("[E] resolve dstAddr failed. err:%v", err)
+		log.Printf("[E] resolve dstAddr failed. connID:%v, err:%v", sockConn.connID, err)
 		return err
 	}
 
-	log.Printf("[I] 3. instruction read success. sockFrame:%+v", sockFrame)
+	log.Printf("[I]3.instruction read success. connID:%v, sockFrame:%+v dstAddr:%v", sockConn.connID, sockFrame, sockConn.dstAddr)
 	return nil
 }
 
@@ -253,7 +257,7 @@ func (sockConn *sockConn) srcToDst() {
 			err := sockFrame.ReadUdpData(sockConn.srcConn, ctx)
 			if err != nil {
 				cancel()
-				log.Printf("[E] read udp data from srcConn failed. err:%v", err)
+				log.Printf("[E] read udp data from srcConn failed. connID:%v, err:%v", sockConn.connID, err)
 				return
 			}
 			cancel()
@@ -262,15 +266,16 @@ func (sockConn *sockConn) srcToDst() {
 			sockConn.dstAddr, _ = net.ResolveUDPAddr(sockConn.dstNetwork, sockFrame.Dst.ADDR)
 			_, err = sockConn.dstConn.(*net.UDPConn).WriteToUDP(sockFrame.data, sockConn.dstAddr.(*net.UDPAddr))
 			if err != nil {
-				log.Printf("[E] write udp data to dstConn failed. err:%v", err)
+				log.Printf("[E] write udp data to dstConn failed. connID:%v, err:%v", sockConn.connID, err)
 				return
 			}
 		} else {
 			_, err := io.Copy(sockConn.dstConn, sockConn.srcConn)
 			if err != nil {
-				log.Printf("[E] socks5 tcp src->dst failed. err:%v", err)
+				log.Printf("[E] socks5 tcp src->dst failed. connID:%v, err:%v", sockConn.connID, err)
 				return
 			}
+
 		}
 	}
 }
@@ -294,7 +299,7 @@ func (sockConn *sockConn) dstToSrc() {
 
 		_, err := io.Copy(sockConn.srcConn, sockConn.dstConn)
 		if err != nil {
-			log.Printf("[E] socks5 tcp dst->src failed. err:%v, dstNetwork:%v, dstAddr:%v", err, sockConn.dstNetwork, sockConn.dstAddr)
+			log.Printf("[E] socks5 tcp dst->src failed. connID:%v, dstNetwork:%v, dstAddr:%v, err:%v", sockConn.connID, sockConn.dstNetwork, sockConn.dstAddr, err)
 			return
 		}
 	}
@@ -310,10 +315,11 @@ func (sockConn *sockConn) Close() error {
 
 	close(sockConn.closeCh)
 	sockConn.closed = true
+
 	if sockConn.dstConn != nil {
 		err := sockConn.dstConn.Close()
 		if err != nil {
-			log.Printf("[I] close dst sockConn failed. err:%s", err)
+			log.Printf("[I] close dst sockConn failed. connID:%v, err:%s", sockConn.connID, err)
 		}
 	}
 

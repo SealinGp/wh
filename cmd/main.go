@@ -2,10 +2,11 @@ package main
 
 import (
 	"errors"
+	"github.com/SealinGp/wh/config"
+	"github.com/SealinGp/wh/pkg/proxy"
 	http_svr "github.com/SealinGp/wh/pkg/proxy/http-svr"
 	"github.com/SealinGp/wh/pkg/proxy/socks5"
 	"github.com/jessevdk/go-flags"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -13,16 +14,56 @@ import (
 	"syscall"
 )
 
-type ProxyServer interface {
-	Start() error
-	GetType() string
-	GetAddr() string
-	io.Closer
+type App struct {
+	ProxyServes []proxy.ProxyServer
+	CfgOpt      *config.ConfigOption
 }
 
 type CmdOptions struct {
 	HttpProxyAddrs  []string `short:"p" long:"httpProxyAddr" description:"http(s) proxy addresses" required:"no"`
 	SocksProxyAddrs []string `short:"s" long:"socksProxyAddrs" description:"socks5 proxy addresses" required:"no"`
+	ConfigPath      string   `short:"c" long:"configPath" description:"config path" required:"yes"`
+}
+
+var (
+	_version_ string
+)
+
+func main() {
+	cmdOptions := &CmdOptions{}
+	_, err := flags.Parse(cmdOptions)
+	if err != nil {
+		return
+	}
+
+	log.SetFlags(log.Lshortfile)
+
+	app := &App{
+		ProxyServes: make([]proxy.ProxyServer, 0, proxy.DefaultMaxServers),
+	}
+
+	cfgOpt := config.NewConfigOption(cmdOptions.ConfigPath)
+	err = cfgOpt.Init()
+	if err != nil {
+		log.Printf("[E] config init failed. err:%v", err)
+		return
+	}
+	app.CfgOpt = cfgOpt
+
+	err = app.StartAll(cmdOptions)
+	if err != nil {
+		log.Printf("[E] proxy start failed. err:%v", err)
+		return
+	}
+	defer app.CloseAll()
+
+	log.Printf("[I] wh start success. version:%v, pid:%v", _version_, os.Getpid())
+
+	//release resources
+	sigCh := make(chan os.Signal)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT)
+	sig := <-sigCh
+	log.Printf("[I] wh exit. signal:%v", sig)
 }
 
 func (app *App) CloseAll() {
@@ -65,6 +106,10 @@ func (app *App) StartAll(opt *CmdOptions) error {
 
 		socks5ProxyServer := socks5.NewSockServer(&socks5.SockServerOpt{
 			Addr: socks5ProxyAddr,
+			Auth: socks5.NewSockAuth(&socks5.SockAuthOpt{
+				User: "",
+				Pass: "",
+			}),
 		})
 		if err := socks5ProxyServer.Start(); err != nil {
 			log.Printf("[E] socks5 proxy server start failed. addr:%v, err:%s", socks5ProxyAddr, err)
@@ -80,34 +125,4 @@ func (app *App) StartAll(opt *CmdOptions) error {
 	}
 
 	return nil
-}
-
-type App struct {
-	ProxyServes []ProxyServer
-}
-
-const DefaultMaxServers = 20
-
-func main() {
-	cmdOptions := &CmdOptions{}
-	_, err := flags.Parse(cmdOptions)
-	if err != nil {
-		return
-	}
-
-	app := &App{
-		ProxyServes: make([]ProxyServer, 0, DefaultMaxServers),
-	}
-	defer app.CloseAll()
-
-	err = app.StartAll(cmdOptions)
-	if err != nil {
-		log.Printf("[E] proxy start failed. err:%v", err)
-		return
-	}
-
-	//release resources
-	sigCh := make(chan os.Signal)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGHUP)
-	<-sigCh
 }
