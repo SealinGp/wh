@@ -45,9 +45,8 @@ func main() {
 	}
 	app.CfgOpt = cfgOpt
 
-	logLevel := c_log.LEVEL_ERR
-
 	//dev environment use stderr to log
+	logLevel := c_log.LEVEL_ERR
 	if e == "dev" {
 		app.CfgOpt.LogPath = ""
 		logLevel = c_log.LEVEL_INFO
@@ -87,6 +86,24 @@ func (app *App) CloseAll() {
 }
 
 func (app *App) StartAll(opt *config.ConfigOption) error {
+	if len(app.ProxyServes) == 0 {
+		return errors.New("no proxy servers")
+	}
+
+	err := app.StartHTTP(opt)
+	if err != nil {
+		return err
+	}
+
+	err = app.StartSocks5(opt)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (app *App) StartHTTP(opt *config.ConfigOption) error {
 	//http server proxy
 	for _, httpProxyAddr := range opt.HttpProxyAddrs {
 		_, _, err := net.SplitHostPort(httpProxyAddr)
@@ -103,10 +120,13 @@ func (app *App) StartAll(opt *config.ConfigOption) error {
 			return err
 		}
 
-		c_log.I("http proxy server start success. addr:%v", httpProxyAddr)
+		c_log.I("http proxy success. addr:%v", httpProxyAddr)
 		app.ProxyServes = append(app.ProxyServes, httpProxyServer)
 	}
+	return nil
+}
 
+func (app *App) StartSocks5(opt *config.ConfigOption) error {
 	//socks5 proxy
 	for _, socks5ProxyAddr := range opt.SocksProxyAddrs {
 		_, _, err := net.SplitHostPort(socks5ProxyAddr)
@@ -137,17 +157,13 @@ func (app *App) StartAll(opt *config.ConfigOption) error {
 			return err
 		}
 
-		c_log.I("socks5 proxy server start success. addr:%v", socks5ProxyAddr)
+		c_log.I("socks5 proxy success. addr:%v", socks5ProxyAddr)
 		app.ProxyServes = append(app.ProxyServes, socks5Wrap)
 	}
-
-	if len(app.ProxyServes) == 0 {
-		return errors.New("no proxy servers")
-	}
-
 	return nil
 }
 
+//logger wrap for socks5
 type LoggerWrap struct {
 }
 
@@ -155,6 +171,7 @@ func (loggerWrap *LoggerWrap) Printf(format string, v ...interface{}) {
 	log.Printf(format, v...)
 }
 
+//socks5wrap for socks5
 type Socks5Wrap struct {
 	addr string
 	*socks5.Server
