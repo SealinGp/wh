@@ -11,6 +11,13 @@ import (
 )
 
 //https://www.ietf.org/rfc/rfc1928.txt
+/**
+todo:
+sock_conn.go:290: [E] socks5 tcp dst->src failed. connID:0, dstNetwork:tcp, dstAddr:14.215.177.38:443, err:readfrom tcp 172.19.0.17:1234->116.24.81.151:52483: use of closed network connection
+sock_conn.go:290: [E] socks5 tcp dst->src failed. connID:0, dstNetwork:tcp, dstAddr:14.215.177.38:443, err:readfrom tcp 172.19.0.17:1234->116.24.81.151:52483: use of closed network connection
+
+SSL握手?
+*/
 
 const (
 	DEFAULT_VERSION = 0x05
@@ -133,7 +140,7 @@ func (sockFrame *SockFrame) ReadHandShake(reader io.Reader, ctx context.Context)
 	case <-ctx.Done():
 		return ctx.Err()
 	case frameData = <-dataCh:
-		log.Printf("[D] 1.hanshake read data:%v", frameData)
+		log.Printf("[D] ReadHandShake data:%v", frameData)
 	}
 
 	if len(frameData) < 3 {
@@ -171,6 +178,8 @@ func (sockFrame *SockFrame) WriteHandShake(writer io.Writer) (int, error) {
 	data := make([]byte, 0, 1500)
 	data = append(data, sockFrame.Ver)
 	data = append(data, sockFrame.Method)
+
+	log.Printf("[D] WriteHandShake data:%v", data[:])
 	return writer.Write(data)
 }
 
@@ -203,7 +212,7 @@ func (sockFrame *SockFrame) ReadAuthReq(ctx context.Context, reader io.Reader) (
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case frameData = <-dataCh:
-		log.Printf("[D] ReadAuth read data:%v", frameData)
+		log.Printf("[D] ReadAuth data:%v", frameData)
 	}
 
 	if len(frameData) < 2 {
@@ -257,6 +266,7 @@ func (sockFrame *SockFrame) WriteAuthResp(writer io.Writer, isSuccess bool) (int
 	data := make([]byte, 0, 2)
 	data = append(data, DEFAULT_VERSION)
 	data = append(data, status)
+	log.Printf("[I] WriteAuthResp. data:%v", data[:])
 	return writer.Write(data)
 }
 
@@ -291,7 +301,7 @@ func (sockFrame *SockFrame) ReadInstruction(ctx context.Context, reader io.Reade
 	case <-ctx.Done():
 		return ctx.Err()
 	case frameData = <-dataCh:
-		log.Printf("[D] 2.read instruction data:%v", frameData)
+		log.Printf("[D] ReadInstruction. data:%v", frameData)
 	}
 
 	if len(frameData) < 6 {
@@ -369,6 +379,7 @@ func (sockFrame *SockFrame) ReadInstruction(ctx context.Context, reader io.Reade
 /**
 server -> client
 3.服务端返回目标传输协议,地址,端口的代理连接情况
+[5 0 0 1 49 55 50 46 49 57 46 48 46 49 55 202 190]
 +----+-----+-------+------+----------+----------+
 |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
 +----+-----+-------+------+----------+----------+
@@ -384,19 +395,24 @@ func (sockFrame *SockFrame) WriteInstruction(writer io.Writer, connFunc func() (
 		rep = REP_GENERAL_SOCKS_SERVER_FAILURE
 	}
 
-	data := make([]byte, 0, 4+len(ipv4)+len(port))
+	data := make([]byte, 0, 6+len(ipv4))
 	data = append(data, DEFAULT_VERSION)
 	data = append(data, byte(rep))
 	data = append(data, RSV_DEFAULT)
 	data = append(data, AYTP_IPV4)
 	data = append(data, ipv4...)
-	data = append(data, port...)
+
+	//端口号大端序
+	portData := make([]byte, 2)
+	binary.BigEndian.PutUint16(portData, binary.BigEndian.Uint16(port))
+	data = append(data, portData...)
 
 	_, err := writer.Write(data)
 	if connErr != nil {
 		return 0, connErr
 	}
 
+	log.Printf("[I] WriteInstruction. data:%v", data[:])
 	return 0, err
 }
 

@@ -5,19 +5,22 @@ import "github.com/spf13/viper"
 type ConfigOption struct {
 	filePath string
 	vi       *viper.Viper
-	options  *Options
+	*Options
 }
 
 type Options struct {
-	User string
-	Pass string
+	User            string
+	Pass            string
+	HttpProxyAddrs  []string
+	SocksProxyAddrs []string
+	LogPath         string
 }
 
 func NewConfigOption(filePath string) *ConfigOption {
 	configOption := &ConfigOption{
 		filePath: filePath,
 		vi:       viper.New(),
-		options:  &Options{},
+		Options:  &Options{},
 	}
 
 	return configOption
@@ -31,14 +34,10 @@ func (configOption *ConfigOption) Init() error {
 		return err
 	}
 
-	err = configOption.vi.Unmarshal(configOption.options)
+	err = configOption.vi.Unmarshal(configOption.Options)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (configOption *ConfigOption) GetOptions() *Options {
-	return configOption.options
 }

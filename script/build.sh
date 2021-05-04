@@ -1,11 +1,9 @@
 #!/bin/bash
 
 APPNAME="wh"
+APPVER=`git describe --tags`
 
-APPVER="git describe --tags"
-
-
-go build -o $PWD/$APPNAME -ldflags "-X main._version_=$(git describe --tags)" cmd/main.go
+go build -ldflags "-X 'main._version_=$APPVER'" -o $PWD/$APPNAME cmd/wh/main.go
 
 tar -cvf "$APPNAME.tar" $APPNAME script config/config.yml
 

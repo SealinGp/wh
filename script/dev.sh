@@ -1,3 +1,3 @@
 #!/bin/bash
 
-go run cmd/main.go -c config/config.yml -s :1234
+go run cmd/main.go -c config/config.yml -e "dev"

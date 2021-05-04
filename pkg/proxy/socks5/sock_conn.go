@@ -2,13 +2,11 @@ package socks5
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -61,16 +59,12 @@ func (sockConn *sockConn) Start() error {
 		return err
 	}
 
-	log.Printf("[I] handShake success. connID:%v, authType:%v", sockConn.connID, sockConn.authType)
-
 	//服务端如需user_pass认证,则走认证流程
 	if sockConn.authType == NMETHODS_USERPASS && sockConn.auth != nil {
 		if err = sockConn.handleAuth(); err != nil {
 			sockConn.Close()
 			return err
 		}
-
-		log.Printf("[I] handleAuth success. connID:%v", sockConn.connID)
 	}
 
 	//开始处理客户端代理请求
@@ -101,12 +95,9 @@ func (sockConn *sockConn) handShake() error {
 
 	//服务端选择认证方式
 	resp := NewSockFrame()
+	resp.Method = NMETHODS_NONE
 	resp.Ver = DEFAULT_VERSION
 	for _, method := range req.Methods {
-		if method == NMETHODS_NONE && sockConn.auth == nil {
-			resp.Method = NMETHODS_NONE
-			break
-		}
 		if method == NMETHODS_USERPASS && sockConn.auth != nil {
 			resp.Method = NMETHODS_USERPASS
 			break
@@ -121,6 +112,8 @@ func (sockConn *sockConn) handShake() error {
 		log.Printf("[E] write failed. connID:%v, addr:%v, err:%v", sockConn.connID, sockConn.srcConn.RemoteAddr(), err)
 		return err
 	}
+
+	log.Printf("[I] handShake finished. connID:%v", sockConn.connID)
 
 	sockConn.authType = resp.Method
 	return nil
@@ -189,12 +182,7 @@ func (sockConn *sockConn) handleProxyInstruction() error {
 			return nil, nil, errors.New(fmt.Sprintf("get local host and port failed. err:%v", err))
 		}
 
-		portUint64, _ := strconv.ParseUint(portStr, 10, 16)
-		portUint16 := uint16(portUint64)
-		portBytes := make([]byte, 2)
-		binary.BigEndian.PutUint16(portBytes, portUint16)
-
-		return []byte(ipv4Str), portBytes, nil
+		return []byte(ipv4Str), []byte(portStr), nil
 	}
 
 	sockFrame := NewSockFrame()
@@ -229,7 +217,7 @@ func (sockConn *sockConn) parseProxyInstruction() error {
 		return err
 	}
 
-	log.Printf("[I]3.instruction read success. connID:%v, sockFrame:%+v dstAddr:%v", sockConn.connID, sockFrame, sockConn.dstAddr)
+	log.Printf("[I] parseProxyInstruction success. connID:%v, sockFrame:%+v dstAddr:%v", sockConn.connID, sockFrame, sockConn.dstAddr)
 	return nil
 }
 

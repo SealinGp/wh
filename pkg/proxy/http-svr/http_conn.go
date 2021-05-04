@@ -3,7 +3,6 @@ package http_svr
 import (
 	"bufio"
 	"context"
-	"errors"
 	"io"
 	"log"
 	"net"
@@ -109,10 +108,12 @@ func (tcpConn *httpConn) createDstConn() error {
 		Header: make(http.Header),
 	}
 
-	//非隧道代理
+	//非隧道代理,则直接转发请求
 	if srcReq.Method != http.MethodConnect {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
+
+		//构建dst http request
 		dstReq, err := http.NewRequestWithContext(ctx, srcReq.Method, srcReq.URL.String(), srcReq.Body)
 		if err != nil {
 			log.Printf("[E] new dst req failed. err:%v", err)
@@ -125,6 +126,7 @@ func (tcpConn *httpConn) createDstConn() error {
 			return err
 		}
 
+		//添加转发ip头,X-Forward-For,意思是为哪个客户端转发的请求,逗号隔开
 		dstReq.Header = srcReq.Header.Clone()
 		forwardForHeader := dstReq.Header.Get("X-Forward-For")
 		if forwardForHeader != "" {
@@ -136,13 +138,14 @@ func (tcpConn *httpConn) createDstConn() error {
 		}
 		dstReq.Header.Set("X-Forward-For", forwardForHeader)
 
-		//do dst request
+		//代理请求dst端
 		dstResp, err := http.DefaultClient.Do(dstReq)
 		if err != nil {
 			log.Printf("[E] do dst req failed. err:%v", err)
 			return err
 		}
 
+		//返回结果给src端
 		for k, vs := range dstResp.Header {
 			for _, v1 := range vs {
 				srcReq.Response.Header.Add(k, v1)
@@ -157,10 +160,10 @@ func (tcpConn *httpConn) createDstConn() error {
 			log.Printf("[E] dst resp write to src resp failed. err:%v", err)
 			return err
 		}
-		return errors.New("not tunnel proxy, conn finished")
+		return ErrNotTunnelProxy
 	}
 
-	//隧道代理
+	//隧道代理,在建立dst连接后需要返回Connection Established 给src client,然后持续互相转发
 	dstIP, dstPort, _ := net.SplitHostPort(srcReq.Host)
 	if dstPort == "" {
 		dstPort = "80"

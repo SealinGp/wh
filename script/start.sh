@@ -2,4 +2,4 @@
 
 export addr=":1234"
 
-./wh -c "config/config.yml" -s "$addr"
+./wh -c "config/config.yml" -s "$addr" -e "prod"

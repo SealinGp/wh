@@ -1,10 +1,11 @@
 package http_svr
 
 import (
-	"github.com/SealinGp/wh/pkg/proxy"
 	"log"
 	"net"
 	"sync"
+
+	"github.com/SealinGp/wh/pkg/proxy"
 )
 
 type HttpServer struct {
@@ -81,6 +82,10 @@ func (httpServer *HttpServer) serveAccept() {
 		})
 		err = tcpConn.start()
 		if err != nil {
+			//不打印非隧道的一次性代理请求
+			if err == ErrNotTunnelProxy {
+				continue
+			}
 			log.Printf("[E] tcp conn start faild. err:%s", err)
 			continue
 		}

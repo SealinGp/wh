@@ -2,16 +2,18 @@ package main
 
 import (
 	"errors"
-	"github.com/SealinGp/wh/config"
-	"github.com/SealinGp/wh/pkg/proxy"
-	http_svr "github.com/SealinGp/wh/pkg/proxy/http-svr"
-	"github.com/SealinGp/wh/pkg/proxy/socks5"
-	"github.com/jessevdk/go-flags"
+	"flag"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/SealinGp/wh/config"
+	c_log "github.com/SealinGp/wh/pkg/c-log"
+	"github.com/SealinGp/wh/pkg/proxy"
+	http_svr "github.com/SealinGp/wh/pkg/proxy/http-svr"
+	"github.com/SealinGp/wh/pkg/proxy/socks5"
 )
 
 type App struct {
@@ -19,38 +21,44 @@ type App struct {
 	CfgOpt      *config.ConfigOption
 }
 
-type CmdOptions struct {
-	HttpProxyAddrs  []string `short:"p" long:"httpProxyAddr" description:"http(s) proxy addresses" required:"no"`
-	SocksProxyAddrs []string `short:"s" long:"socksProxyAddrs" description:"socks5 proxy addresses" required:"no"`
-	ConfigPath      string   `short:"c" long:"configPath" description:"config path" required:"yes"`
-}
-
 var (
 	_version_ string
+	c         string
+	e         string
 )
 
 func main() {
-	cmdOptions := &CmdOptions{}
-	_, err := flags.Parse(cmdOptions)
-	if err != nil {
-		return
-	}
-
-	log.SetFlags(log.Lshortfile)
+	flag.StringVar(&c, "c", "config/config.yml", "config path")
+	flag.StringVar(&e, "e", "dev", "environment dev|prod")
+	flag.Parse()
 
 	app := &App{
 		ProxyServes: make([]proxy.ProxyServer, 0, proxy.DefaultMaxServers),
 	}
 
-	cfgOpt := config.NewConfigOption(cmdOptions.ConfigPath)
-	err = cfgOpt.Init()
+	//config init
+	cfgOpt := config.NewConfigOption(c)
+	err := cfgOpt.Init()
 	if err != nil {
 		log.Printf("[E] config init failed. err:%v", err)
 		return
 	}
 	app.CfgOpt = cfgOpt
 
-	err = app.StartAll(cmdOptions)
+	//dev environment use stderr to log
+	if e == "dev" {
+		app.CfgOpt.LogPath = ""
+	}
+
+	//log init(rotate & log level)
+	c_log.CLogInit(&c_log.CLogOptions{
+		Flag:     log.Lshortfile | log.Ltime,
+		Path:     cfgOpt.LogPath,
+		LogLevel: c_log.LogLevelInfo,
+	})
+
+	//start proxy
+	err = app.StartAll(cfgOpt)
 	if err != nil {
 		log.Printf("[E] proxy start failed. err:%v", err)
 		return
@@ -59,7 +67,7 @@ func main() {
 
 	log.Printf("[I] wh start success. version:%v, pid:%v", _version_, os.Getpid())
 
-	//release resources
+	//wait signal for release resources
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGQUIT)
 	sig := <-sigCh
@@ -75,7 +83,7 @@ func (app *App) CloseAll() {
 	}
 }
 
-func (app *App) StartAll(opt *CmdOptions) error {
+func (app *App) StartAll(opt *config.ConfigOption) error {
 	//http server proxy
 	for _, httpProxyAddr := range opt.HttpProxyAddrs {
 		_, _, err := net.SplitHostPort(httpProxyAddr)

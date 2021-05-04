@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 type SockServer struct {
@@ -64,6 +65,8 @@ func (sockServer *SockServer) Start() error {
 }
 
 func (sockServer *SockServer) serveAccept() {
+	blockInterval := 5 * time.Millisecond
+
 	for {
 		select {
 		case <-sockServer.closeCh:
@@ -73,8 +76,17 @@ func (sockServer *SockServer) serveAccept() {
 
 		conn, err := sockServer.listener.AcceptTCP()
 		if err != nil {
+			if e, ok := err.(net.Error); ok && e.Temporary() {
+				time.Sleep(blockInterval)
+				blockInterval *= 2
+				if blockInterval > 1*time.Second {
+					blockInterval = 1 * time.Second
+				}
+				continue
+			}
+
 			log.Printf("[E] accpet conn failed. err:%v", err)
-			continue
+			return
 		}
 
 		sockServer.rwmutex.RLock()

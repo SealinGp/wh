@@ -1,0 +1,1 @@
+go build -o self_report ./cmd/self-report && ./self_report
