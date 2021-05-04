@@ -1,5 +1,3 @@
 #!/bin/bash
 
-export addr=":1234"
-
-./wh -c "config/wh.yml" -s "$addr" -e "prod"
+./wh -c "config/wh.yml" -e "prod"

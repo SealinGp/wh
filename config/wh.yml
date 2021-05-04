@@ -1,7 +1,7 @@
 user: sealingp
 pass: sealingp
 
-httpProxyAddrs: []
-socksProxyAddrs: [":1234"]
+httpProxyAddrs: [":8000"]
+socksProxyAddrs: [":9000"]
 
 logPath: "./wh.log"
