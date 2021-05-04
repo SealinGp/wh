@@ -1,9 +1,10 @@
 package http_svr
 
 import (
-	"log"
 	"net"
 	"sync"
+
+	c_log "github.com/SealinGp/go-lib/c-log"
 
 	"github.com/SealinGp/wh/pkg/proxy"
 )
@@ -70,7 +71,7 @@ func (httpServer *HttpServer) serveAccept() {
 
 		conn, err := httpServer.listener.AcceptTCP()
 		if err != nil {
-			log.Printf("[E] accept conn failed. err:%s", err)
+			c_log.E("accept conn failed. err:%s", err)
 			continue
 		}
 
@@ -86,7 +87,7 @@ func (httpServer *HttpServer) serveAccept() {
 			if err == ErrNotTunnelProxy {
 				continue
 			}
-			log.Printf("[E] tcp conn start faild. err:%s", err)
+			c_log.E("tcp conn start failed. err:%s", err)
 			continue
 		}
 
@@ -110,7 +111,7 @@ func (httpServer *HttpServer) Close() error {
 	for connID, conn := range httpServer.conns {
 		err := conn.Close()
 		if err != nil {
-			log.Printf("[E] close conn failed. connID:%v, err:%v", connID, err)
+			c_log.E("close conn failed. connID:%v, err:%v", connID, err)
 		}
 		delete(httpServer.conns, connID)
 	}

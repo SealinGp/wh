@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
 	"image/jpeg"
 	"io/ioutil"
-	"log"
 	"net/http"
 	url2 "net/url"
 	"os"
@@ -17,6 +15,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	c_log "github.com/SealinGp/go-lib/c-log"
+
+	uuid "github.com/satori/go.uuid"
 )
 
 type SafetyApi struct {
@@ -69,13 +71,13 @@ func (safetyApi *SafetyApi) Login(paramMap *sync.Map) *LoginResp {
 
 	reqBodyData, err := json.Marshal(body)
 	if err != nil {
-		log.Printf("[E] Marshal body failed. err:%v", err)
+		c_log.E("Marshal body failed. err:%v", err)
 		return nil
 	}
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.LoginUrl, bytes.NewReader(reqBodyData))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil
 	}
 	req.Header.Set("Content-type", "application/json")
@@ -90,26 +92,26 @@ func (safetyApi *SafetyApi) Login(paramMap *sync.Map) *LoginResp {
 	//开始登录
 	resp, err := safetyApi.httpCli.Do(req)
 	if err != nil {
-		log.Printf("[E] post failed. url:%v, err:%v", safetyApi.cfg.LoginUrl, err)
+		c_log.E("post failed. url:%v, err:%v", safetyApi.cfg.LoginUrl, err)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	respBodyData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[E] read body failed. err:%v", err)
+		c_log.E("read body failed. err:%v", err)
 		return nil
 	}
 
 	loginResp := &LoginResp{}
 	err = json.Unmarshal(respBodyData, loginResp)
 	if err != nil {
-		log.Printf("[E] Unmarshal loginResp failed. err:%v", err)
+		c_log.E("Unmarshal loginResp failed. err:%v", err)
 		return nil
 	}
 
 	if loginResp.Code != "10" {
-		log.Printf("[E] login req failed. data:%s", respBodyData)
+		c_log.E("login req failed. data:%s", respBodyData)
 		loginResp.InnerId = "700EF8026D9AE6D6E0530100007F4FE8"
 		loginResp.UnitType = "21"
 		loginResp.UnitId = "700EF8026D9AE6D6E0530100007F4FE8"
@@ -163,7 +165,7 @@ func (safetyApi *SafetyApi) Login(paramMap *sync.Map) *LoginResp {
 func (safetyApi *SafetyApi) getTokenID() string {
 	resp, err := safetyApi.httpCli.Get(safetyApi.cfg.TokenUrl)
 	if err != nil {
-		log.Printf("[E] getToken failed. err:%v", err)
+		c_log.E("getToken failed. err:%v", err)
 		return ""
 	}
 
@@ -171,18 +173,18 @@ func (safetyApi *SafetyApi) getTokenID() string {
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[E] read body failed. err:%v", err)
+		c_log.E("read body failed. err:%v", err)
 		return ""
 	}
 
 	getTokenResp := &GetTokenResp{}
 	err = json.Unmarshal(data, getTokenResp)
 	if err != nil {
-		log.Printf("[E] Unmarshal failed. data:%s, err:%v", data, err)
+		c_log.E("Unmarshal failed. data:%s, err:%v", data, err)
 		return ""
 	}
 
-	log.Printf("[I] getToken response:%s", data)
+	c_log.I("getToken response:%s", data)
 	return getTokenResp.ID
 }
 
@@ -191,20 +193,20 @@ func (safetyApi *SafetyApi) reqRandCodeUrl() {
 	randCodeUrl := fmt.Sprintf("%v?version=%v", safetyApi.cfg.RandCodeUrl, MakeTimestamp())
 	resp, err := safetyApi.httpCli.Get(randCodeUrl)
 	if err != nil {
-		log.Printf("[E] reqRandCodeUrl failed. err:%v", err)
+		c_log.E("reqRandCodeUrl failed. err:%v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	img, err := jpeg.Decode(resp.Body)
 	if err != nil {
-		log.Printf("[E] jpeg decode failed. err:%v", err)
+		c_log.E("jpeg decode failed. err:%v", err)
 		return
 	}
 
 	file, err := os.OpenFile(safetyApi.cfg.RandCodeImg, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
-		log.Printf("[E] OpenFile failed. file:%v, err:%v", safetyApi.cfg.RandCodeImg, err)
+		c_log.E("OpenFile failed. file:%v, err:%v", safetyApi.cfg.RandCodeImg, err)
 		return
 	}
 	defer file.Close()
@@ -214,7 +216,7 @@ func (safetyApi *SafetyApi) reqRandCodeUrl() {
 	}
 	err = jpeg.Encode(file, img, jpegOpt)
 	if err != nil {
-		log.Printf("[E] jpeg encode failed. err:%v", err)
+		c_log.E("jpeg encode failed. err:%v", err)
 		return
 	}
 }
@@ -268,7 +270,7 @@ func (safetyApi *SafetyApi) QueryEntpType(paramMap *sync.Map) ([]*CheckItem, err
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.QueryEntpTypeUrl, strings.NewReader(val.Encode()))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil, err
 	}
 
@@ -278,7 +280,7 @@ func (safetyApi *SafetyApi) QueryEntpType(paramMap *sync.Map) ([]*CheckItem, err
 	resp := make([]*CheckItem, 0)
 	err = safetyApi.doRequest(req, &resp)
 	if err != nil {
-		log.Printf("[E] doRequest failed. err:%v", err)
+		c_log.E("doRequest failed. err:%v", err)
 		return nil, err
 	}
 
@@ -295,7 +297,7 @@ func (safetyApi *SafetyApi) QueryCheckItem(paramMap *sync.Map, item *CheckItem) 
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.QueryCheckItemUrl, strings.NewReader(val.Encode()))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil, err
 	}
 
@@ -340,7 +342,7 @@ func (safetyApi *SafetyApi) QueryCheckItemID(paramMap *sync.Map, checkItem *Chec
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.QueryCheckItemIDUrl, strings.NewReader(val.Encode()))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil, err
 	}
 	req.Header.Set("content-type", "application/x-www-form-urlencoded")
@@ -349,7 +351,7 @@ func (safetyApi *SafetyApi) QueryCheckItemID(paramMap *sync.Map, checkItem *Chec
 	resp := &QueryCheckItemIDResp{}
 	err = safetyApi.doRequest(req, resp)
 	if err != nil {
-		log.Printf("[E] doRequest QueryCheckItemID failed. err:%v", err)
+		c_log.E("doRequest QueryCheckItemID failed. err:%v", err)
 		return nil, err
 	}
 
@@ -376,7 +378,7 @@ func (safetyApi *SafetyApi) Report(paramMap *sync.Map) (*ReportResp, error) {
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.ReportUrl, strings.NewReader(val.Encode()))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil, err
 	}
 
@@ -386,7 +388,7 @@ func (safetyApi *SafetyApi) Report(paramMap *sync.Map) (*ReportResp, error) {
 	resp := &ReportResp{}
 	err = safetyApi.doRequest(req, resp)
 	if err != nil {
-		log.Printf("[E] doRequest Report failed. err:%v", err)
+		c_log.E("doRequest Report failed. err:%v", err)
 		return nil, err
 	}
 
@@ -462,7 +464,7 @@ func (safetyApi *SafetyApi) SaveOrUpdate(paramMap *sync.Map, reqProto *SaveOrUpd
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.SaveOrUpdateUrl, strings.NewReader(val.Encode()))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil, err
 	}
 	req.Header.Set("content-type", "application/x-www-form-urlencoded; charset=UTF-8")
@@ -471,7 +473,7 @@ func (safetyApi *SafetyApi) SaveOrUpdate(paramMap *sync.Map, reqProto *SaveOrUpd
 	resp := make(map[string]interface{})
 	err = safetyApi.doRequest(req, &resp)
 	if err != nil {
-		log.Printf("[E] SaveOrUpdate doRequest failed. err:%v", err)
+		c_log.E("SaveOrUpdate doRequest failed. err:%v", err)
 		return nil, err
 	}
 
@@ -485,7 +487,7 @@ func (safetyApi *SafetyApi) QueryCheckInspect(paramMap *sync.Map, checkItem *Sel
 
 	req, err := http.NewRequest(http.MethodPost, safetyApi.cfg.QueryCheckInspectUrl, strings.NewReader(val.Encode()))
 	if err != nil {
-		log.Printf("[E] NewRequest failed. err:%v", err)
+		c_log.E("NewRequest failed. err:%v", err)
 		return nil, err
 	}
 
@@ -495,7 +497,7 @@ func (safetyApi *SafetyApi) QueryCheckInspect(paramMap *sync.Map, checkItem *Sel
 	resp := make([]*QueryCheckInspectItem, 0)
 	err = safetyApi.doRequest(req, &resp)
 	if err != nil {
-		log.Printf("[E] doRequest Report failed. err:%v", err)
+		c_log.E("doRequest Report failed. err:%v", err)
 		return nil, err
 	}
 
@@ -505,20 +507,20 @@ func (safetyApi *SafetyApi) QueryCheckInspect(paramMap *sync.Map, checkItem *Sel
 func (safetyApi *SafetyApi) doRequest(req *http.Request, respStru interface{}) error {
 	resp, err := safetyApi.httpCli.Do(req)
 	if err != nil {
-		log.Printf("[E] httpCli do failed. err:%v", err)
+		c_log.E("httpCli do failed. err:%v", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	respData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[E] read doRequest resp failed. err:%v", err)
+		c_log.E("read doRequest resp failed. err:%v", err)
 		return err
 	}
 
 	err = json.Unmarshal(respData, respStru)
 	if err != nil {
-		log.Printf("[E] Unmarshal failed. respData:%s", respData)
+		c_log.E("Unmarshal failed. respData:%s", respData)
 		if bytes.Contains(respData, []byte("timg.jpg")) {
 			return errors.New("404")
 		}

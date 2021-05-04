@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	c_log "github.com/SealinGp/wh/pkg/c-log"
-	self_report "github.com/SealinGp/wh/self-report"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -16,6 +14,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	c_log "github.com/SealinGp/go-lib/c-log"
+	self_report "github.com/SealinGp/wh/self-report"
 )
 
 var (
@@ -43,8 +44,9 @@ func main() {
 
 	//log init
 	logCf := c_log.CLogInit(&c_log.CLogOptions{
-		Path: app.cfg.LogPath,
-		Flag: log.Lshortfile | log.Ltime,
+		Path:     app.cfg.LogPath,
+		Flag:     log.Lshortfile | log.Ltime,
+		LogLevel: c_log.LEVEL_ERR,
 	})
 	defer logCf()
 
@@ -76,9 +78,9 @@ func main() {
 
 		err := httpServer.Shutdown(ctx)
 		if err != nil {
-			log.Printf("[E] shutdown failed. err:%v", err)
+			c_log.E("shutdown failed. err:%v", err)
 		}
-		log.Printf("[I] recevied signal exit. sig:%v", sig)
+		c_log.I("recevied signal exit. sig:%v", sig)
 	case <-errCh:
 		signal.Stop(sigCh)
 	}
@@ -98,7 +100,7 @@ func (webServer *WebServer) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 
 		reqData, err := ioutil.ReadAll(req.Body)
 		if err != nil {
-			log.Printf("[E] read req body failed. err:%v", err)
+			c_log.E("read req body failed. err:%v", err)
 			http.Error(rw, "read req body failed.", http.StatusForbidden)
 			return
 		}
@@ -142,7 +144,7 @@ func (webServer *WebServer) StartReport() *StartReportResp {
 	if err != nil {
 		startReportResp.Code = http.StatusInternalServerError
 		startReportResp.Msg = fmt.Sprintf("QueryEntpType failed. err:%v", err)
-		log.Printf("[E] %v", startReportResp.Msg)
+		c_log.E("%v", startReportResp.Msg)
 		return startReportResp
 	}
 
@@ -153,7 +155,7 @@ func (webServer *WebServer) StartReport() *StartReportResp {
 
 		tableContents, err := webServer.safetyApi.QueryCheckItemID(&webServer.reqMap, checkItem, pageNum, pageSize)
 		if err != nil {
-			log.Printf("[E] QueryCheckItemID failed. checkItem:%+v, err:%v", checkItem, err)
+			c_log.E("QueryCheckItemID failed. checkItem:%+v, err:%v", checkItem, err)
 			continue
 		}
 
@@ -181,7 +183,7 @@ func (webServer *WebServer) StartReport() *StartReportResp {
 	}
 
 	//开始自查(1s执行一次,防止被封ip)
-	log.Printf("[I] 开始自查. 随机有隐患数量:%v", len(selfCheckIndexMap))
+	c_log.I("开始自查. 随机有隐患数量:%v", len(selfCheckIndexMap))
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	//测试上报条数
@@ -206,12 +208,12 @@ func (webServer *WebServer) StartReport() *StartReportResp {
 					reqProto.QueryCheckInspectItems = queryCheckInspects[:1]
 					reqProto.TroubleType = 1
 					queryCheckInspectsData, _ := json.Marshal(queryCheckInspects)
-					log.Printf("[I] 有隐患内容 %s", queryCheckInspectsData)
+					c_log.I("有隐患内容 %s", queryCheckInspectsData)
 				}
 			}
 
 			if err != nil {
-				log.Printf("[E] 查询有隐患内容失败. err:%v", err)
+				c_log.E("查询有隐患内容失败. err:%v", err)
 			}
 		}
 
@@ -219,19 +221,19 @@ func (webServer *WebServer) StartReport() *StartReportResp {
 		_, err := webServer.safetyApi.SaveOrUpdate(&webServer.reqMap, reqProto)
 		if err != nil {
 			reqProtoData, _ := json.Marshal(reqProto)
-			log.Printf("[E] 自查保存失败. reqData:%s, err:%v", reqProtoData, err)
+			c_log.E("自查保存失败. reqData:%s, err:%v", reqProtoData, err)
 			reportFailedCount++
 			continue
 		}
 		reportSuccessCount++
 	}
 
-	log.Printf("[I] 开始上报")
+	c_log.I("开始上报")
 	reportResp, err := webServer.safetyApi.Report(&webServer.reqMap)
 	reportDate, reports := "", ""
 	if err != nil {
 		startReportResp.Msg = "点击上报按钮失败"
-		log.Printf("[E] %v", startReportResp.Msg)
+		c_log.E("%v", startReportResp.Msg)
 	} else {
 		reportDate = reportResp.ReportDate
 		reports = reportResp.Reports

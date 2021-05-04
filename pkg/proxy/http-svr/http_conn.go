@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	c_log "github.com/SealinGp/go-lib/c-log"
 )
 
 type httpConn struct {
@@ -58,7 +60,7 @@ func (tcpConn *httpConn) dstToSrc() {
 	defer func() {
 		err := tcpConn.Close()
 		if err != nil {
-			log.Printf("[E] close httpConn failed. connID:%d, err:%v", tcpConn.ID, err)
+			c_log.E("close httpConn failed. connID:%d, err:%v", tcpConn.ID, err)
 			return
 		}
 		tcpConn.parentServer.delConn(tcpConn.ID)
@@ -73,7 +75,7 @@ func (tcpConn *httpConn) dstToSrc() {
 
 		_, err := io.Copy(tcpConn.srcConn, tcpConn.dstConn)
 		if err != nil {
-			log.Printf("[E] dst->src failed. err:%v", err)
+			c_log.E("dst->src failed. err:%v", err)
 			return
 		}
 	}
@@ -83,7 +85,7 @@ func (tcpConn *httpConn) srcToDst() {
 	defer func() {
 		err := tcpConn.Close()
 		if err != nil {
-			log.Printf("[E] close httpConn failed. connID:%d, err:%v", tcpConn.ID, err)
+			c_log.E("close httpConn failed. connID:%d, err:%v", tcpConn.ID, err)
 			return
 		}
 		tcpConn.parentServer.delConn(tcpConn.ID)
@@ -92,7 +94,7 @@ func (tcpConn *httpConn) srcToDst() {
 	for {
 		_, err := io.Copy(tcpConn.dstConn, tcpConn.srcConn)
 		if err != nil {
-			log.Printf("[E] src->dst failed. err:%s", err)
+			c_log.E("src->dst failed. err:%s", err)
 			return
 		}
 	}
@@ -116,13 +118,13 @@ func (tcpConn *httpConn) createDstConn() error {
 		//构建dst http request
 		dstReq, err := http.NewRequestWithContext(ctx, srcReq.Method, srcReq.URL.String(), srcReq.Body)
 		if err != nil {
-			log.Printf("[E] new dst req failed. err:%v", err)
+			c_log.E("new dst req failed. err:%v", err)
 			return err
 		}
 
 		srcIP, _, err := net.SplitHostPort(tcpConn.srcConn.RemoteAddr().String())
 		if err != nil {
-			log.Printf("[E] get src addr failed. err:%v", err)
+			c_log.E("get src addr failed. err:%v", err)
 			return err
 		}
 
@@ -141,7 +143,7 @@ func (tcpConn *httpConn) createDstConn() error {
 		//代理请求dst端
 		dstResp, err := http.DefaultClient.Do(dstReq)
 		if err != nil {
-			log.Printf("[E] do dst req failed. err:%v", err)
+			c_log.E("do dst req failed. err:%v", err)
 			return err
 		}
 
@@ -157,7 +159,7 @@ func (tcpConn *httpConn) createDstConn() error {
 		log.Printf("[D] srcIP:%v dstIP:%v X-Forward-For:%v", tcpConn.srcConn.RemoteAddr().String(), srcReq.Host, forwardForHeader)
 		err = srcReq.Response.Write(tcpConn.srcConn)
 		if err != nil {
-			log.Printf("[E] dst resp write to src resp failed. err:%v", err)
+			c_log.E("dst resp write to src resp failed. err:%v", err)
 			return err
 		}
 		return ErrNotTunnelProxy
@@ -192,7 +194,7 @@ func (tcpConn *httpConn) createDstConn() error {
 			return keepAliveErr
 		}()
 		if err != nil {
-			log.Printf("[E] keep alive failed. err:%v", err)
+			c_log.E("keep alive failed. err:%v", err)
 			return err
 		}
 	}
@@ -223,7 +225,7 @@ func (tcpConn *httpConn) Close() error {
 	if tcpConn.dstConn != nil {
 		err := tcpConn.dstConn.Close()
 		if err != nil {
-			log.Printf("[I] close dst httpConn failed. err:%s", err)
+			c_log.I("close dst httpConn failed. err:%s", err)
 		}
 	}
 
