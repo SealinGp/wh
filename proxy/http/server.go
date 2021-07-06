@@ -1,38 +1,36 @@
-package http_svr
+package http_proxy
 
 import (
 	"net"
 	"sync"
 
 	c_log "github.com/SealinGp/go-lib/c-log"
-
-	"github.com/SealinGp/wh/pkg/proxy"
 )
 
-type HttpServer struct {
+type Server struct {
 	addr     string
 	listener *net.TCPListener
 
 	connID  uint64
-	conns   map[uint64]*httpConn
+	conns   map[uint64]*conn
 	rwmutex sync.RWMutex
 
 	closeCh chan struct{}
 	closed  bool
 }
 
-type HttpServerOpt struct {
+type ServerOpt struct {
 	Addr      string
 	ProxyType int
 }
 
-func NewHttpServer(opt *HttpServerOpt) *HttpServer {
-	httpServer := &HttpServer{
+func NewServer(opt *ServerOpt) *Server {
+	httpServer := &Server{
 		addr:     opt.Addr,
 		listener: nil,
 
 		connID: 0,
-		conns:  make(map[uint64]*httpConn),
+		conns:  make(map[uint64]*conn),
 
 		closeCh: make(chan struct{}),
 		closed:  false,
@@ -40,15 +38,7 @@ func NewHttpServer(opt *HttpServerOpt) *HttpServer {
 	return httpServer
 }
 
-func (httpServer *HttpServer) GetAddr() string {
-	return httpServer.addr
-}
-
-func (httpServer *HttpServer) GetType() string {
-	return proxy.HTTPS
-}
-
-func (httpServer *HttpServer) Start() error {
+func (httpServer *Server) Start() error {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", httpServer.addr)
 	if err != nil {
 		return err
@@ -61,7 +51,7 @@ func (httpServer *HttpServer) Start() error {
 	return nil
 }
 
-func (httpServer *HttpServer) serveAccept() {
+func (httpServer *Server) serveAccept() {
 	for {
 		select {
 		case <-httpServer.closeCh:
@@ -76,7 +66,7 @@ func (httpServer *HttpServer) serveAccept() {
 		}
 
 		curConnId := httpServer.connID
-		tcpConn := newConn(&httpConnOpt{
+		tcpConn := newConn(&connOpt{
 			Server: httpServer,
 			ID:     curConnId,
 			conn:   conn,
@@ -98,7 +88,7 @@ func (httpServer *HttpServer) serveAccept() {
 	}
 }
 
-func (httpServer *HttpServer) Close() error {
+func (httpServer *Server) Close() error {
 	httpServer.rwmutex.Lock()
 	defer httpServer.rwmutex.Unlock()
 
@@ -118,7 +108,7 @@ func (httpServer *HttpServer) Close() error {
 	return httpServer.listener.Close()
 }
 
-func (httpServer *HttpServer) delConn(connID uint64) {
+func (httpServer *Server) delConn(connID uint64) {
 	httpServer.rwmutex.Lock()
 	defer httpServer.rwmutex.Unlock()
 	if _, ok := httpServer.conns[connID]; !ok {

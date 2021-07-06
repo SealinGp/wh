@@ -1,5 +1,3 @@
-user: sealingp
-pass: sealingp
 
 httpProxyAddrs: [":8000"]
 socksProxyAddrs: [":9000"]

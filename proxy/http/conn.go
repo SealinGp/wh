@@ -1,8 +1,9 @@
-package http_svr
+package http_proxy
 
 import (
 	"bufio"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -14,8 +15,12 @@ import (
 	c_log "github.com/SealinGp/go-lib/c-log"
 )
 
-type httpConn struct {
-	parentServer *HttpServer
+var (
+	ErrNotTunnelProxy = errors.New("not tunnel proxy, conn finished")
+)
+
+type conn struct {
+	parentServer *Server
 	ID           uint64
 	srcConn      *net.TCPConn
 	dstConn      *net.TCPConn
@@ -25,14 +30,14 @@ type httpConn struct {
 	rwmutex sync.RWMutex
 }
 
-type httpConnOpt struct {
-	Server *HttpServer
+type connOpt struct {
+	Server *Server
 	ID     uint64
 	conn   *net.TCPConn
 }
 
-func newConn(opt *httpConnOpt) *httpConn {
-	httpConn := &httpConn{
+func newConn(opt *connOpt) *conn {
+	conn := &conn{
 		parentServer: opt.Server,
 		ID:           opt.ID,
 		srcConn:      opt.conn,
@@ -41,10 +46,10 @@ func newConn(opt *httpConnOpt) *httpConn {
 		closed:  false,
 		closeCh: make(chan struct{}),
 	}
-	return httpConn
+	return conn
 }
 
-func (tcpConn *httpConn) start() error {
+func (tcpConn *conn) start() error {
 	err := tcpConn.createDstConn()
 	if err != nil {
 		_ = tcpConn.Close()
@@ -56,11 +61,11 @@ func (tcpConn *httpConn) start() error {
 	return nil
 }
 
-func (tcpConn *httpConn) dstToSrc() {
+func (tcpConn *conn) dstToSrc() {
 	defer func() {
 		err := tcpConn.Close()
 		if err != nil {
-			c_log.E("close httpConn failed. connID:%d, err:%v", tcpConn.ID, err)
+			c_log.E("close conn failed. connID:%d, err:%v", tcpConn.ID, err)
 			return
 		}
 		tcpConn.parentServer.delConn(tcpConn.ID)
@@ -81,11 +86,11 @@ func (tcpConn *httpConn) dstToSrc() {
 	}
 }
 
-func (tcpConn *httpConn) srcToDst() {
+func (tcpConn *conn) srcToDst() {
 	defer func() {
 		err := tcpConn.Close()
 		if err != nil {
-			c_log.E("close httpConn failed. connID:%d, err:%v", tcpConn.ID, err)
+			c_log.E("close conn failed. connID:%d, err:%v", tcpConn.ID, err)
 			return
 		}
 		tcpConn.parentServer.delConn(tcpConn.ID)
@@ -100,7 +105,7 @@ func (tcpConn *httpConn) srcToDst() {
 	}
 }
 
-func (tcpConn *httpConn) createDstConn() error {
+func (tcpConn *conn) createDstConn() error {
 	srcReq, err := http.ReadRequest(bufio.NewReader(tcpConn.srcConn))
 	if err != nil {
 		return err
@@ -211,7 +216,7 @@ func (tcpConn *httpConn) createDstConn() error {
 	return srcReq.Response.Write(tcpConn.srcConn)
 }
 
-func (tcpConn *httpConn) Close() error {
+func (tcpConn *conn) Close() error {
 	tcpConn.rwmutex.Lock()
 	defer tcpConn.rwmutex.Unlock()
 
@@ -225,7 +230,7 @@ func (tcpConn *httpConn) Close() error {
 	if tcpConn.dstConn != nil {
 		err := tcpConn.dstConn.Close()
 		if err != nil {
-			c_log.I("close dst httpConn failed. err:%s", err)
+			c_log.I("close dst conn failed. err:%s", err)
 		}
 	}
 

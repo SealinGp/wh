@@ -2,6 +2,19 @@ package config
 
 import "github.com/spf13/viper"
 
+var (
+	cfg *ConfigOption
+)
+
+func Init(filePath string) error {
+	cfg = NewConfigOption(filePath)
+	return cfg.Init()
+}
+
+func GetOptions() *Options {
+	return cfg.Options
+}
+
 type ConfigOption struct {
 	filePath string
 	vi       *viper.Viper
@@ -9,8 +22,6 @@ type ConfigOption struct {
 }
 
 type Options struct {
-	User            string
-	Pass            string
 	HttpProxyAddrs  []string
 	SocksProxyAddrs []string
 	LogPath         string
